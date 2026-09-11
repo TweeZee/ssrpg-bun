@@ -26,7 +26,7 @@
     "schema:sync": "bun run scripts/sync-schema.ts",
     "schema:check": "bun run scripts/sync-schema.ts --check",
     "example": "bun run examples/test.ts",
-    "docs:check": "typedoc && git diff --quiet --exit-code -- docs || (echo \"docs/ is out of date - commit the rebuilt docs\" && exit 1)"
+    "docs:check": "typedoc && [ -z \"$(git status --porcelain -- docs)\" ] || (echo \"docs/ is out of date - run bun run docs and commit the result\" && exit 1)"
   },
   "keywords": [
     "stone-story-rpg",
