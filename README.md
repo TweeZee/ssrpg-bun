@@ -236,12 +236,30 @@ Inherited from the protocol:
 - Only `int`, `bool` and `str` values are supported.
 - The protocol and this interface are experimental and subject to change.
 
+## API documentation
+
+Every exported symbol carries TSDoc, so [TypeDoc](https://typedoc.org) can render
+the full API reference:
+
+```bash
+bun run docs        # writes ./docs
+bun run docs:watch  # rebuilds on change
+```
+
+Open `docs/index.html` afterwards. The build runs with TypeDoc's validation turned
+up (`notDocumented`, `invalidLink`, `notExported`) and warnings treated as errors,
+so it fails if a symbol loses its docs or a `{@link}` goes stale — worth running in
+CI alongside `bun test`.
+
+`docs/` is generated output and is not committed.
+
 ## Development
 
 ```bash
 bun install
 bun test          # unit tests + end-to-end tests against a mock MindConnect server
 bun run typecheck
+bun run docs
 ```
 
 `test/mock-server.ts` implements enough of the game side of the protocol to exercise
@@ -259,6 +277,7 @@ src/
   types.ts        shared types
   commands/       one module per StoneScript namespace
 examples/test.ts  port of the Python SSRPGtest.py
+typedoc.json      API reference build
 ```
 
 ## License

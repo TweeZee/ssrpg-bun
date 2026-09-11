@@ -1,17 +1,80 @@
+/**
+ * The `draw` namespace.
+ *
+ * @packageDocumentation
+ */
 import { namespace, type CallHost } from "./base";
 
-/** `draw` — direct drawing on the game screen. */
+/**
+ * `draw` — direct drawing on the game screen.
+ *
+ * @remarks
+ * Unlike {@link CommandQueue.print}, these are immediate calls rather than
+ * queued commands, so each one costs a round trip and takes effect straight
+ * away. They deliberately bypass the per-step cache, so calling
+ * {@link Draw.Clear} twice in one step really clears twice.
+ */
 export interface Draw {
+  /**
+   * Calls `draw.Clear` — erases everything drawn this frame.
+   *
+   * @returns A promise that settles once the game has acknowledged the call.
+   */
   Clear(): Promise<void>;
-  /** Draws the player, optionally at an explicit screen position. */
+
+  /**
+   * Calls `draw.Player` — draws the player sprite.
+   *
+   * @param x - Screen column. Omit together with `y` to draw at the player's
+   * own position.
+   * @param y - Screen row.
+   * @returns A promise that settles once the game has acknowledged the call.
+   */
   Player(x?: number, y?: number): Promise<void>;
-  /** Fills a background cell, or a `w` x `h` block starting at it. */
+
+  /**
+   * Calls `draw.Bg` — fills the background behind a cell or a block of cells.
+   *
+   * @param x - Screen column of the top-left cell.
+   * @param y - Screen row of the top-left cell.
+   * @param color - StoneScript colour code.
+   * @param w - Block width. Omit together with `h` to fill a single cell.
+   * @param h - Block height.
+   * @returns A promise that settles once the game has acknowledged the call.
+   */
   Bg(x: number, y: number, color: string, w?: number, h?: number): Promise<void>;
+
+  /**
+   * Calls `draw.Box` — draws a rectangle outline.
+   *
+   * @param x - Screen column of the top-left corner.
+   * @param y - Screen row of the top-left corner.
+   * @param w - Width in cells.
+   * @param h - Height in cells.
+   * @param color - StoneScript colour code.
+   * @param style - Border style index, as defined by StoneScript.
+   * @returns A promise that settles once the game has acknowledged the call.
+   */
   Box(x: number, y: number, w: number, h: number, color: string, style: number): Promise<void>;
-  /** Reads the symbol currently drawn at a screen position. */
+
+  /**
+   * Calls `draw.GetSymbol` — reads the symbol currently drawn at a position.
+   *
+   * @param x - Screen column.
+   * @param y - Screen row.
+   * @returns The single-character symbol, or `null` for an empty cell.
+   *
+   * @see {@link SSRPGInterface.getScreen} to read a whole block at once.
+   */
   GetSymbol(x: number, y: number): Promise<string | null>;
 }
 
+/**
+ * Builds the {@link Draw} namespace.
+ *
+ * @param host - The interface the calls are routed through.
+ * @returns Accessors for `draw`.
+ */
 export function createDraw(host: CallHost): Draw {
   const ns = namespace(host, "draw");
   return {

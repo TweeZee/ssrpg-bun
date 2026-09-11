@@ -13,15 +13,28 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["src", "README.md", "LICENSE"],
+  "files": [
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "bun test",
+    "docs": "typedoc",
+    "docs:watch": "typedoc --watch",
     "example": "bun run examples/test.ts"
   },
-  "keywords": ["stone-story-rpg", "stonescript", "mindconnect", "bun", "game-automation"],
+  "keywords": [
+    "stone-story-rpg",
+    "stonescript",
+    "mindconnect",
+    "bun",
+    "game-automation"
+  ],
   "devDependencies": {
     "@types/bun": "latest",
+    "typedoc": "^0.28.20",
     "typescript": "^5.9.0"
   }
 }

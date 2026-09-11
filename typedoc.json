@@ -1,0 +1,25 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": ["src/index.ts"],
+  "out": "docs",
+  "name": "ssrpg-bun",
+  "readme": "README.md",
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "navigationLinks": {
+    "Stone Story RPG": "https://stonestoryrpg.com/",
+    "SSRPGInterface (Python)": "https://github.com/artificial-potato/SSRPGInterface"
+  },
+  "sort": ["source-order"],
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "rewrittenLink": true,
+    "notDocumented": true,
+    "unusedMergeModuleWith": true
+  },
+  "treatWarningsAsErrors": true,
+  "treatValidationWarningsAsErrors": true
+}

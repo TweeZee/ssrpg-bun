@@ -1,8 +1,32 @@
 /**
- * ssrpg-bun — a Bun/TypeScript interface for Stone Story RPG.
+ * A Bun/TypeScript interface for Stone Story RPG.
  *
- * Port of the Python `ssrpgif` library by ArtificialPotato
- * (MindConnect protocol v0.3).
+ * @remarks
+ * Port of the Python `ssrpgif` library by ArtificialPotato, speaking
+ * MindConnect protocol {@link PROTOCOL_VERSION | v0.3} (Stone Story RPG
+ * v4.25.0 or above).
+ *
+ * Start at {@link SSRPGInterface} — it owns the connection, the per-step cache
+ * and the command queue, and exposes one namespace per StoneScript class.
+ * {@link MindConnectClient} sits underneath if you want the protocol without
+ * the conveniences, and the {@link buildPacket | protocol helpers} are
+ * exported for tooling and tests.
+ *
+ * @example
+ * ```ts
+ * import { SSRPGInterface } from "ssrpg-bun";
+ *
+ * const ssrpg = new SSRPGInterface({ mode: "sync" });
+ * await ssrpg.connect();
+ *
+ * await ssrpg.run(async (context) => {
+ *   if (context !== "pre") return;
+ *   ssrpg.print("hello bun!", { x: 1, y: 1 });
+ *   if ((await ssrpg.foe.hp()) === 1) ssrpg.loc.Pause();
+ * });
+ * ```
+ *
+ * @packageDocumentation
  */
 export { SSRPGInterface } from "./interface";
 export type { RunOptions, SSRPGInterfaceOptions, StepFunction } from "./interface";
@@ -10,6 +34,7 @@ export { MindConnectClient } from "./client";
 export type { ClientOptions } from "./client";
 export * from "./errors";
 export * from "./types";
+export type { ParsedSignal } from "./protocol";
 export {
   autoCast,
   asBool,
@@ -18,6 +43,7 @@ export {
   buildPacket,
   parseSignal,
   EOF,
+  MAX_REQUEST_ID,
   PROTOCOL_VERSION,
   QUEUE_COMMANDS,
   SIGNAL,
