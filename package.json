@@ -35,6 +35,7 @@
     "game-automation"
   ],
   "devDependencies": {
+    "@stephansama/catppuccin-typedoc": "^1.0.9",
     "@types/bun": "latest",
     "typedoc": "^0.28.20",
     "typescript": "^5.9.0"

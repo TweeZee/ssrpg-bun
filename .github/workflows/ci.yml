@@ -19,6 +19,35 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  checks:
+    name: Typecheck, tests and docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # Also checks test/types.test-d.ts, where the type-level assertions live.
+      - name: Typecheck
+        run: bun run typecheck
+
+      # The later steps run even after a failure, so one push reports every
+      # problem rather than only the first.
+      - name: Tests
+        if: ${{ !cancelled() }}
+        run: bun test
+
+      # Fails on an undocumented export or a stale {@link}: the docs build
+      # treats validation warnings as errors.
+      - name: Docs
+        if: ${{ !cancelled() }}
+        run: bun run docs
+
   schema:
     name: Schema check
     runs-on: ubuntu-latest

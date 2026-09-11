@@ -425,8 +425,8 @@ StoneScript object), `NOT_IN_MANUAL` for MindConnect's own `var.get`/`set`/`has`
 Anything not on those lists gets reported.
 
 `--check` writes nothing and exits non-zero if a generated file is stale or drift
-is unaccounted for. `.github/workflows/ci.yml` runs it on every push and pull
-request to `main`, and weekly — the manual is published independently of this repo,
+is unaccounted for. CI runs it on every push and pull request to
+`main`, and weekly — the manual is published independently of this repo,
 so drift can appear without anyone pushing. Pass `--from page.html` to work from a
 local copy, or `--url` to point at another revision of the manual.
 
@@ -440,8 +440,10 @@ bun run docs
 bun run schema:check
 ```
 
-CI (`.github/workflows/ci.yml`) runs `schema:check` on `main`; the rest of the
-checks above are local for now.
+`.github/workflows/ci.yml` runs all four on every push and pull request to `main`,
+as two parallel jobs: the deterministic checks in one, and the schema check — which
+fetches an external page — in the other. Within the checks job the steps run even
+after a failure, so one push reports every problem rather than only the first.
 
 `test/mock-server.ts` implements enough of the game side of the protocol to exercise
 the client without the game running. `test/types.test-d.ts` holds compile-time
