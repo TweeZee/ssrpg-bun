@@ -424,11 +424,20 @@ Deliberate differences are recorded in the script itself, with a reason each:
 StoneScript object), `NOT_IN_MANUAL` for MindConnect's own `var.get`/`set`/`has`.
 Anything not on those lists gets reported.
 
-`--check` writes nothing and exits non-zero if a generated file is stale or drift
-is unaccounted for. CI runs it on every push and pull request to
-`main`, and weekly — the manual is published independently of this repo,
-so drift can appear without anyone pushing. Pass `--from page.html` to work from a
-local copy, or `--url` to point at another revision of the manual.
+`--check` writes nothing and exits non-zero if a generated file is stale or drift is
+unaccounted for. Pass `--from page.html` to work from a local copy, or `--url` to
+point at another revision of the manual.
+
+CI runs it on every push and pull request to `main`, and weekly — the manual is
+published independently of this repo, so drift appears without anyone pushing. How
+it reacts depends on what triggered it, because drift is rarely the fault of the
+commit under test:
+
+| Trigger | On drift |
+| --- | --- |
+| push, pull request | A warning and a run summary. The build stays green. |
+| schedule (weekly) | Opens a `schema-drift` issue with the report, or stays quiet if one is already open. |
+| manual run | Fails, for immediate feedback. |
 
 ## Development
 

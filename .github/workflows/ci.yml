@@ -52,6 +52,9 @@ jobs:
     name: Schema check
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@v5
 
@@ -64,5 +67,76 @@ jobs:
       # Fetches https://stonestoryrpg.com/stonescript/beta.html and fails if a
       # generated file is stale, or if the manual and StoneScriptAPI disagree
       # about a member or a return type.
+      #
+      # The manual is published independently of this repo, so drift is rarely
+      # the fault of the commit being tested. A push or pull request is
+      # therefore told about it without being failed; the weekly run opens an
+      # issue instead. Only a deliberate manual run fails outright.
       - name: Check the schema against the Stonescript manual
-        run: bun run schema:check
+        id: schema
+        continue-on-error: ${{ github.event_name != 'workflow_dispatch' }}
+        run: |
+          set -o pipefail
+          bun run schema:check 2>&1 | tee schema-report.txt
+
+      - name: Summarise the drift
+        if: ${{ steps.schema.outcome == 'failure' }}
+        run: |
+          {
+            echo "### Schema drift"
+            echo
+            echo "The typed schema and the Stonescript manual disagree."
+            echo
+            echo '```'
+            cat schema-report.txt
+            echo '```'
+            echo
+            echo "Run \`bun run schema:sync\` to regenerate, then resolve anything it still reports."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=Schema drift::The typed schema and the Stonescript manual disagree — see the run summary."
+
+      # A weekly run has no commit to attribute the drift to and nobody
+      # watching it, so it leaves something durable behind instead.
+      - name: Open an issue for the drift
+        if: ${{ steps.schema.outcome == 'failure' && github.event_name == 'schedule' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          open_issue=$(gh issue list --label schema-drift --state open --limit 1 \
+            --json number --jq '.[0].number // empty')
+          if [ -n "$open_issue" ]; then
+            echo "Issue #$open_issue is already open for this; not filing another."
+            exit 0
+          fi
+
+          {
+            echo "\`bun run schema:check\` found that the typed schema no longer matches"
+            echo "[the Stonescript manual](https://stonestoryrpg.com/stonescript/beta.html)."
+            echo
+            echo '```'
+            cat schema-report.txt
+            echo '```'
+            echo
+            echo "## What to do"
+            echo
+            echo "1. \`bun run schema:sync\` regenerates \`src/schema/ids.ts\` and refreshes the"
+            echo "   descriptions in \`src/schema/api.ts\`."
+            echo "2. Anything it still reports needs a decision: add the member to"
+            echo "   \`StoneScriptAPI\` with its argument list, or record why it is excluded in"
+            echo "   \`NOT_IN_REGISTRY\` / \`NOT_IN_MANUAL\` in \`scripts/sync-schema.ts\`."
+            echo "3. Argument lists are not checked automatically — skim the manual's diff for"
+            echo "   signatures that changed without being renamed."
+            echo
+            echo "Found by [this run]($RUN_URL)."
+          } > issue-body.md
+
+          gh label create schema-drift \
+            --color D93F0B \
+            --description "The typed schema and the Stonescript manual disagree" || true
+
+          gh issue create \
+            --title "Schema drift: the Stonescript manual has moved on" \
+            --label schema-drift \
+            --body-file issue-body.md
