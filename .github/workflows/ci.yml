@@ -98,7 +98,7 @@ jobs:
       # A weekly run has no commit to attribute the drift to and nobody
       # watching it, so it leaves something durable behind instead.
       - name: Open an issue for the drift
-        if: ${{ steps.schema.outcome == 'failure' && github.event_name == 'schedule' }}
+        if: ${{ steps.schema.outcome == 'failure' && github.event_name == 'pull_request' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
