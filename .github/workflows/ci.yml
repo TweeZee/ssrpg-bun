@@ -42,20 +42,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun test
 
-      # Two things at once: the build fails on an undocumented export or a
-      # stale {@link} (validation warnings are errors), and the committed
-      # docs/ has to match what it produces, since that folder is what gets
-      # mirrored into the wiki. Output is reproducible because typedoc.json
-      # pins source links to the branch rather than the commit.
+      # A validation gate rather than a build artifact: TypeDoc treats its
+      # validation warnings as errors, so this fails on an undocumented export
+      # or a stale {@link}. The output itself is thrown away — the wiki job
+      # regenerates it from the same sources.
       - name: Docs
         if: ${{ !cancelled() }}
-        run: |
-          bun run docs
-          if [ -n "$(git status --porcelain -- docs)" ]; then
-            echo "::error::docs/ is out of date. Run 'bun run docs' and commit the result."
-            git status --short -- docs | head -20
-            exit 1
-          fi
+        run: bun run docs
 
   schema:
     name: Schema check
@@ -153,10 +146,9 @@ jobs:
   wiki:
     name: Publish docs/ to the wiki
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # Only after the checks pass: the docs step is what guarantees docs/ matches
-    # the sources, and publishing documentation for a broken commit is worse
-    # than publishing nothing.
+    timeout-minutes: 10
+    # Only after the checks pass: publishing documentation for a commit that
+    # fails its own tests is worse than publishing nothing.
     needs: checks
     if: >-
       ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -165,40 +157,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
         with:
-          # The whole history, so the previous commit can be diffed against.
-          fetch-depth: 0
+          bun-version: latest
 
-      - name: Did docs/ change?
-        id: docs
-        env:
-          BEFORE: ${{ github.event.before }}
-          AFTER: ${{ github.sha }}
-        run: |
-          set -euo pipefail
+      - run: bun install --frozen-lockfile
 
-          # A manual run republishes unconditionally. So does anything without
-          # a usable previous commit — a first push, or a force-push that
-          # rewrote it away. The sync itself is a no-op when nothing differs,
-          # so erring towards running it is cheap.
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
-            || [ -z "${BEFORE:-}" ] \
-            || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
-            || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+      # Always generated here, from the commit being published. docs/ is not
+      # committed, so there is no stored copy that can go stale, and no way to
+      # publish documentation that does not match the sources beside it.
+      - name: Generate the wiki pages
+        run: bun run docs
 
-          if git diff --quiet "$BEFORE" "$AFTER" -- docs; then
-            echo "docs/ is unchanged since ${BEFORE}; leaving the wiki alone."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          else
-            git diff --name-only "$BEFORE" "$AFTER" -- docs | head -5
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          fi
-
+      # The mirror compares the freshly generated pages against what the wiki
+      # already holds, so a run that changes nothing publishes nothing. That
+      # is a more honest test than diffing the pushed commit range, which
+      # would miss a source change whose docs had not been rebuilt.
       - name: Mirror docs/ into the wiki repository
-        if: ${{ steps.docs.outputs.changed == 'true' }}
         env:
           WIKI_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
@@ -216,7 +192,7 @@ jobs:
             {
               echo "### Wiki not published"
               echo
-              echo "\`docs/\` changed, but \`${REPOSITORY}.wiki.git\` does not exist yet."
+              echo "The wiki pages were generated, but \`${REPOSITORY}.wiki.git\` does not exist yet."
               echo "GitHub only creates it once a first page has been saved, and there is"
               echo "no API for that:"
               echo

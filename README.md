@@ -387,7 +387,6 @@ full API reference:
 ```bash
 bun run docs        # writes ./docs
 bun run docs:watch  # rebuilds on change
-bun run docs:check  # rebuild and fail if the committed docs/ is stale
 ```
 
 The build runs with TypeDoc's validation turned up (`notDocumented`, `invalidLink`,
@@ -398,20 +397,23 @@ Output is Markdown, shaped for a GitHub wiki by `typedoc-plugin-markdown` and
 `typedoc-github-wiki-theme`: flat `Class.X.md` / `Interface.X.md` pages, a `Home.md`
 built from this README, and a generated `_Sidebar.md`.
 
-`docs/` **is committed**, and is the source the wiki is published from. That works
-because the output is reproducible: TypeDoc stamps the current commit into every
-"Defined in" link by default, which would rewrite every page on every commit and
-leave the committed copy permanently one commit behind. `typedoc.json` sets
-`"gitRevision": "main"` so the links point at the branch instead. CI rebuilds and
-fails if `docs/` does not match, so it cannot drift from the source.
+`docs/` is **not committed**. It is build output, and the wiki is a separate
+repository, so a copy in this one would only be a second source of truth to keep in
+sync. CI regenerates it from the commit being published, which is what makes stale
+documentation impossible rather than merely detectable.
+
+Source links are pinned to the branch (`"gitRevision": "main"` in `typedoc.json`)
+rather than the building commit, so identical sources produce identical pages and the
+wiki only gains a commit when something actually changed.
 
 ### The wiki
 
 A GitHub wiki is a **separate git repository** (`ssrpg-bun.wiki.git`), so `docs/` is
 mirrored into it by the `wiki` job in CI. That job runs after the checks pass —
 publishing documentation for a commit that fails its own tests is worse than
-publishing nothing — and only when the push actually changed `docs/`. The mirror is
-idempotent, so a run that finds the wiki already matching does nothing.
+publishing nothing — and it regenerates the pages before every publish. The mirror
+compares them against what the wiki already holds, so a run that changes nothing
+publishes nothing.
 
 Mirror, not merge: a page that stops being generated stops existing, and anything
 edited by hand in the wiki is overwritten by the next sync.
@@ -502,7 +504,7 @@ slow-types analysis of the public API.
 bun install
 bun test          # unit tests + end-to-end tests against a mock MindConnect server
 bun run typecheck # includes the type-level assertions in test/types.test-d.ts
-bun run docs:check
+bun run docs      # also a validation gate: warnings are errors
 bun run schema:check
 ```
 
@@ -531,7 +533,6 @@ examples/test.ts  port of the Python SSRPGtest.py
 examples/typed.ts tour of the typed StoneScript surface
 scripts/          schema:sync — regenerates the schema from the manual
 typedoc.json      wiki build (TypeDoc + typedoc-plugin-markdown)
-docs/             generated wiki pages, mirrored to the repository wiki
 jsr.json          JSR package manifest
 ```
 
