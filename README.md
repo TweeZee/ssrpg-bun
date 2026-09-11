@@ -391,8 +391,7 @@ bun run docs:watch  # rebuilds on change
 
 Open `docs/index.html` afterwards. The build runs with TypeDoc's validation turned
 up (`notDocumented`, `invalidLink`, `notExported`) and warnings treated as errors,
-so it fails if a symbol loses its docs or a `{@link}` goes stale — worth running in
-CI alongside `bun test`.
+so it fails if a symbol loses its docs or a `{@link}` goes stale.
 
 `docs/` is generated output and is not committed.
 
@@ -426,9 +425,10 @@ StoneScript object), `NOT_IN_MANUAL` for MindConnect's own `var.get`/`set`/`has`
 Anything not on those lists gets reported.
 
 `--check` writes nothing and exits non-zero if a generated file is stale or drift
-is unaccounted for, which makes it a useful CI step next to `bun test`. Pass
-`--from page.html` to work from a local copy, or `--url` to point at another
-revision of the manual.
+is unaccounted for. `.github/workflows/ci.yml` runs it on every push and pull
+request to `main`, and weekly — the manual is published independently of this repo,
+so drift can appear without anyone pushing. Pass `--from page.html` to work from a
+local copy, or `--url` to point at another revision of the manual.
 
 ## Development
 
@@ -439,6 +439,9 @@ bun run typecheck # includes the type-level assertions in test/types.test-d.ts
 bun run docs
 bun run schema:check
 ```
+
+CI (`.github/workflows/ci.yml`) runs `schema:check` on `main`; the rest of the
+checks above are local for now.
 
 `test/mock-server.ts` implements enough of the game side of the protocol to exercise
 the client without the game running. `test/types.test-d.ts` holds compile-time
