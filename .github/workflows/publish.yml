@@ -1,0 +1,97 @@
+name: Publish
+
+# Prepared but inactive. The job below is skipped unless the repository
+# variable JSR_PUBLISH_ENABLED is set to 'true', so neither a release nor a
+# manual run can publish by accident.
+#
+# One-time setup, when you actually want to publish:
+#
+#   1. Create the scope and package on https://jsr.io. The package name must
+#      match "name" in jsr.json — currently @tweezee/ssrpg-bun, which is a
+#      placeholder for whatever scope you register.
+#   2. On the package's settings page, link this GitHub repository. That is
+#      what lets the workflow authenticate over OIDC, with no token to store.
+#   3. Set the repository variable JSR_PUBLISH_ENABLED to 'true' under
+#      Settings -> Secrets and variables -> Actions -> Variables.
+#
+# Then a published GitHub release publishes that version, and a manual run
+# publishes only when its dry-run input is unticked.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run every check but stop short of publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  jsr:
+    name: Publish to JSR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: ${{ vars.JSR_PUBLISH_ENABLED == 'true' }}
+    permissions:
+      contents: read
+      # JSR authenticates with a short-lived OIDC token, so there is no
+      # long-lived secret in the repository.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: bun install --frozen-lockfile
+
+      # Publishing is irreversible — a version number on JSR cannot be reused —
+      # so the gates run first.
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Tests
+        run: bun test
+
+      # Two manifests carry a version, and a release carries a third. Skew
+      # between them is the easiest mistake to make here.
+      - name: Check the versions agree
+        run: |
+          jsr_version=$(bun --print 'require("./jsr.json").version')
+          pkg_version=$(bun --print 'require("./package.json").version')
+          echo "jsr.json: $jsr_version"
+          echo "package.json: $pkg_version"
+
+          if [ "$jsr_version" != "$pkg_version" ]; then
+            echo "::error::jsr.json ($jsr_version) and package.json ($pkg_version) disagree."
+            exit 1
+          fi
+
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            tag_version=${GITHUB_REF_NAME#v}
+            echo "release tag: $GITHUB_REF_NAME"
+            if [ "$tag_version" != "$jsr_version" ]; then
+              echo "::error::Release tag $GITHUB_REF_NAME does not match version $jsr_version."
+              exit 1
+            fi
+          fi
+
+      - name: Publish to JSR
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: every check runs, nothing is published."
+            bunx jsr publish --dry-run
+          else
+            bunx jsr publish
+          fi

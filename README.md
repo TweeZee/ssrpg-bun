@@ -439,6 +439,31 @@ commit under test:
 | schedule (weekly) | Opens a `schema-drift` issue with the report, or stays quiet if one is already open. |
 | manual run | Fails, for immediate feedback. |
 
+## Publishing
+
+`.github/workflows/publish.yml` publishes to [JSR](https://jsr.io), and is **prepared
+but inactive** — the job is skipped unless the repository variable
+`JSR_PUBLISH_ENABLED` is `true`, so neither a release nor a manual run can publish by
+accident.
+
+To switch it on:
+
+1. Create the scope and package on [jsr.io](https://jsr.io). The name has to match
+   `"name"` in `jsr.json` — currently `@tweezee/ssrpg-bun`, a placeholder for
+   whatever scope you register.
+2. Link this repository on the package's settings page. That is what lets the
+   workflow authenticate over OIDC; there is no token to store.
+3. Set `JSR_PUBLISH_ENABLED` to `true` under Settings → Secrets and variables →
+   Actions → Variables.
+
+Afterwards a published GitHub release publishes that version, and a manual run
+publishes only when its dry-run input is unticked. Either way the workflow
+typechecks, runs the tests, and refuses to continue unless `jsr.json`,
+`package.json` and the release tag all carry the same version.
+
+`bunx jsr publish --dry-run` runs the same checks locally, including JSR's
+slow-types analysis of the public API.
+
 ## Development
 
 ```bash
@@ -474,6 +499,7 @@ examples/test.ts  port of the Python SSRPGtest.py
 examples/typed.ts tour of the typed StoneScript surface
 scripts/          schema:sync — regenerates the schema from the manual
 typedoc.json      API reference build
+jsr.json          JSR package manifest
 ```
 
 ## License
