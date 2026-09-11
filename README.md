@@ -398,11 +398,37 @@ CI alongside `bun test`.
 
 ## Regenerating the schema
 
-`src/schema/ids.ts` is generated from the manual's appendices; `src/schema/api.ts`
-is hand-maintained but its per-member descriptions come from the same source. Both
-are pinned to beta v4.27.1. When the game moves on, re-read
-[the manual](https://stonestoryrpg.com/stonescript/beta.html) and update them
-together — `test/types.test-d.ts` will catch anything that regresses.
+```bash
+bun run schema:sync    # fetch the manual and regenerate
+bun run schema:check   # fail if anything is stale or drifted (for CI)
+```
+
+`scripts/sync-schema.ts` reads [the manual](https://stonestoryrpg.com/stonescript/beta.html)
+and does three things:
+
+1. Rewrites `src/schema/ids.ts` from the appendices. Fully generated — never
+   hand-edit it.
+2. Refreshes the per-member descriptions in `src/schema/api.ts`. Only doc blocks
+   carrying the generated `@see ... in the Stonescript manual.` tag are rewritten,
+   so hand-written ones survive. Idempotent.
+3. Reports drift against `StoneScriptAPI`: members the manual has that the registry
+   lacks, members the registry has that the manual dropped, and return types that
+   disagree.
+
+Argument lists and the template-literal families need judgement, so step 3 reports
+rather than rewrites. The registry's keys are read by expanding
+`keyof StoneScriptAPI` with the TypeScript compiler, so the families are checked as
+thoroughly as the explicit entries.
+
+Deliberate differences are recorded in the script itself, with a reason each:
+`NOT_IN_REGISTRY` for members the protocol cannot carry (anything returning a
+StoneScript object), `NOT_IN_MANUAL` for MindConnect's own `var.get`/`set`/`has`.
+Anything not on those lists gets reported.
+
+`--check` writes nothing and exits non-zero if a generated file is stale or drift
+is unaccounted for, which makes it a useful CI step next to `bun test`. Pass
+`--from page.html` to work from a local copy, or `--url` to point at another
+revision of the manual.
 
 ## Development
 
@@ -411,6 +437,7 @@ bun install
 bun test          # unit tests + end-to-end tests against a mock MindConnect server
 bun run typecheck # includes the type-level assertions in test/types.test-d.ts
 bun run docs
+bun run schema:check
 ```
 
 `test/mock-server.ts` implements enough of the game side of the protocol to exercise
@@ -431,6 +458,7 @@ src/
   commands/       one module per StoneScript namespace
 examples/test.ts  port of the Python SSRPGtest.py
 examples/typed.ts tour of the typed StoneScript surface
+scripts/          schema:sync — regenerates the schema from the manual
 typedoc.json      API reference build
 ```
 

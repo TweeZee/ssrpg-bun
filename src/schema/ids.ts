@@ -3,8 +3,8 @@
  *
  * @remarks
  * Extracted from {@link https://stonestoryrpg.com/stonescript/beta.html | the
- * Stonescript manual} (beta, v4.27.1 — 2026/01/15). Regenerate rather
- * than hand-edit when the game adds identifiers.
+ * Stonescript manual} (beta, v4.27.1 — 2026/01/15) by
+ * `bun run schema:sync`. Do not hand-edit; regenerate.
  *
  * Sets the game can extend are wrapped in {@link Loose} at the point of use,
  * so the documented values autocomplete while any other string is accepted.
@@ -658,36 +658,36 @@ export type KeyAction =
  * rather than every accepted value — use it through {@link Loose}.
  */
 export type KeyName =
-  | "P"
-  | "Space"
-  | "L"
-  | "I"
-  | "M"
-  | "Q"
-  | "E"
-  | "R"
-  | "W"
-  | "UpArrow"
-  | "S"
-  | "DownArrow"
   | "A"
-  | "LeftArrow"
-  | "D"
-  | "RightArrow"
-  | "Return"
-  | "KeypadEnter"
-  | "X"
-  | "LeftShift"
-  | "RightShift"
-  | "LeftControl"
-  | "RightControl"
-  | "Z"
+  | "B"
   | "C"
+  | "D"
+  | "DownArrow"
+  | "E"
   | "F"
-  | "T"
   | "G"
+  | "I"
+  | "KeypadEnter"
+  | "L"
+  | "LeftArrow"
+  | "LeftControl"
+  | "LeftShift"
+  | "M"
+  | "P"
+  | "Q"
+  | "R"
+  | "Return"
+  | "RightArrow"
+  | "RightControl"
+  | "RightShift"
+  | "S"
+  | "Space"
+  | "T"
+  | "UpArrow"
   | "V"
-  | "B";
+  | "W"
+  | "X"
+  | "Z";
 
 /**
  * Tags accepted by the item and foe search filters.

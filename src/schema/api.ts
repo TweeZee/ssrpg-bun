@@ -337,7 +337,19 @@ export interface StoneScriptAPI
    * @see `loc.bestTime` in the Stonescript manual.
    */
   "loc.bestTime": Read<number>;
+  /**
+   * Causes the run to be abandoned as if the player had pressed to leave
+   * manually.
+   *
+   * @see `loc.Leave` in the Stonescript manual.
+   */
   "loc.Leave": Act;
+  /**
+   * Causes the run to be paused as if the player had pressed the pause button
+   * manually.
+   *
+   * @see `loc.Pause` in the Stonescript manual.
+   */
   "loc.Pause": Act;
 
   // encounter
@@ -515,6 +527,11 @@ export interface StoneScriptAPI
    * @see `key.GetKeyAct` in the Stonescript manual.
    */
   "key.GetKeyAct": Fn<[key: Loose<KeyName>], string>;
+  /**
+   * Resets all actions to their default key bindings.
+   *
+   * @see `key.ResetBinds` in the Stonescript manual.
+   */
   "key.ResetBinds": Act;
 
   // items
@@ -757,9 +774,26 @@ export interface StoneScriptAPI
    * @see `screen.h` in the Stonescript manual.
    */
   "screen.h": Read<number>;
+  /**
+   * For locations that are multi-screen, moves the camera one screen forward
+   * in relation to the player.
+   *
+   * @see `screen.Next` in the Stonescript manual.
+   */
   "screen.Next": Act;
+  /**
+   * For locations that are multi-screen, moves the camera one screen back in
+   * relation to the player.
+   *
+   * @see `screen.Previous` in the Stonescript manual.
+   */
   "screen.Previous": Act;
   "screen.ResetOffset": Act;
+  /**
+   * Clears the entire screen.
+   *
+   * @see `draw.Clear` in the Stonescript manual.
+   */
   "draw.Clear": Act;
   /**
    * Draws the player character, with all equipment and addons, at a specific
@@ -870,6 +904,11 @@ export interface StoneScriptAPI
    * @see `ambient.Add` in the Stonescript manual.
    */
   "ambient.Add": Act<[sound: Loose<AmbientId>]>;
+  /**
+   * Clears all ambient layers.
+   *
+   * @see `ambient.Stop` in the Stonescript manual.
+   */
   "ambient.Stop": Act;
 
   // colour
@@ -1126,7 +1165,23 @@ export interface StoneScriptAPI
    * Changes where imported scripts are loaded from.
    */
   "sys.SetFileUrl": Act<[url: string]>;
+  /**
+   * Removes all UI elements from the main container.
+   *
+   * @see `ui.Clear` in the Stonescript manual.
+   */
+  "ui.Clear": Act;
+  /**
+   * Opens the inventory screen.
+   *
+   * @see `ui.OpenInv` in the Stonescript manual.
+   */
   "ui.OpenInv": Act;
+  /**
+   * Opens the Mind Stone screen.
+   *
+   * @see `ui.OpenMind` in the Stonescript manual.
+   */
   "ui.OpenMind": Act;
   /**
    * Displays the animated banner with up to two messages.

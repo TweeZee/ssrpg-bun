@@ -23,6 +23,8 @@
     "test": "bun test",
     "docs": "typedoc",
     "docs:watch": "typedoc --watch",
+    "schema:sync": "bun run scripts/sync-schema.ts",
+    "schema:check": "bun run scripts/sync-schema.ts --check",
     "example": "bun run examples/test.ts"
   },
   "keywords": [
