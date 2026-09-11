@@ -457,6 +457,7 @@ export interface StoneScriptAPI
    * @see `foe.level` in the Stonescript manual.
    */
   "foe.level": Read<number>;
+  "foe.invented": Read<number>;
 
   // world objects
   /**
