@@ -381,19 +381,43 @@ Inherited from the protocol:
 
 ## API documentation
 
-Every exported symbol carries TSDoc, so [TypeDoc](https://typedoc.org) can render
-the full API reference:
+Every exported symbol carries TSDoc, so [TypeDoc](https://typedoc.org) renders the
+full API reference:
 
 ```bash
 bun run docs        # writes ./docs
 bun run docs:watch  # rebuilds on change
+bun run docs:check  # rebuild and fail if the committed docs/ is stale
 ```
 
-Open `docs/index.html` afterwards. The build runs with TypeDoc's validation turned
-up (`notDocumented`, `invalidLink`, `notExported`) and warnings treated as errors,
-so it fails if a symbol loses its docs or a `{@link}` goes stale.
+The build runs with TypeDoc's validation turned up (`notDocumented`, `invalidLink`,
+`notExported`) and warnings treated as errors, so it fails if a symbol loses its
+docs or a `{@link}` goes stale.
 
-`docs/` is generated output and is not committed.
+`docs/` **is committed**, because GitHub Pages serves it straight from the branch.
+That only works because the output is reproducible: TypeDoc stamps the current commit
+into every "Defined in" source link by default, which would rewrite all 145 files on
+every commit and leave the committed copy permanently one commit behind. `typedoc.json`
+sets `"gitRevision": "main"` so the links point at the branch instead. CI rebuilds and
+fails if `docs/` does not match, so it cannot drift from the source.
+
+### GitHub Pages
+
+The site is ready to serve but Pages is **not enabled yet** — a private repository on
+a free plan cannot use it (`Your current plan does not support GitHub Pages for this
+repository`). Once the repository is public:
+
+```bash
+gh api -X POST repos/TweeZee/ssrpg-bun/pages \
+  -f 'source[branch]=main' -f 'source[path]=/docs'
+```
+
+or Settings → Pages → Deploy from a branch → `main` / `/docs`. It then publishes at
+`https://tweezee.github.io/ssrpg-bun/`, updating on every push that touches `docs/`.
+
+No workflow is involved: the committed folder *is* the site. `docs/.nojekyll` stops
+Pages running the output through Jekyll, and every asset reference is relative, so it
+works from the repository subpath.
 
 ## Regenerating the schema
 
@@ -449,7 +473,7 @@ accident.
 To switch it on:
 
 1. Create the scope and package on [jsr.io](https://jsr.io). The name has to match
-   `"name"` in `jsr.json` — currently `@tweezee/ssrpg-bun`, a placeholder for
+   `"name"` in `jsr.jsonc` — currently `@tweezee/ssrpg-bun`, a placeholder for
    whatever scope you register.
 2. Link this repository on the package's settings page. That is what lets the
    workflow authenticate over OIDC; there is no token to store.
@@ -458,7 +482,7 @@ To switch it on:
 
 Afterwards a published GitHub release publishes that version, and a manual run
 publishes only when its dry-run input is unticked. Either way the workflow
-typechecks, runs the tests, and refuses to continue unless `jsr.json`,
+typechecks, runs the tests, and refuses to continue unless `jsr.jsonc`,
 `package.json` and the release tag all carry the same version.
 
 `bunx jsr publish --dry-run` runs the same checks locally, including JSR's
@@ -470,7 +494,7 @@ slow-types analysis of the public API.
 bun install
 bun test          # unit tests + end-to-end tests against a mock MindConnect server
 bun run typecheck # includes the type-level assertions in test/types.test-d.ts
-bun run docs
+bun run docs:check
 bun run schema:check
 ```
 

@@ -42,11 +42,20 @@ jobs:
         if: ${{ !cancelled() }}
         run: bun test
 
-      # Fails on an undocumented export or a stale {@link}: the docs build
-      # treats validation warnings as errors.
+      # Two things at once: the build fails on an undocumented export or a
+      # stale {@link} (validation warnings are errors), and the committed
+      # docs/ has to match what it produces, since GitHub Pages serves that
+      # folder straight from the branch. Output is reproducible because
+      # typedoc.json pins source links to the branch rather than the commit.
       - name: Docs
         if: ${{ !cancelled() }}
-        run: bun run docs
+        run: |
+          bun run docs
+          if [ -n "$(git status --porcelain -- docs)" ]; then
+            echo "::error::docs/ is out of date. Run 'bun run docs' and commit the result."
+            git status --short -- docs | head -20
+            exit 1
+          fi
 
   schema:
     name: Schema check

@@ -39,5 +39,6 @@
     "SetSignature",
     "TypeAlias"
   ],
-  "customCss": "./node_modules/@stephansama/catppuccin-typedoc/dist/catppuccin-typedoc.css"
+  "customCss": "./node_modules/@stephansama/catppuccin-typedoc/dist/catppuccin-typedoc.css",
+  "gitRevision": "main"
 }
