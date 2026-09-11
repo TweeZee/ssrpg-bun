@@ -408,20 +408,24 @@ fails if `docs/` does not match, so it cannot drift from the source.
 ### The wiki
 
 A GitHub wiki is a **separate git repository** (`ssrpg-bun.wiki.git`), so `docs/` is
-mirrored into it by `.github/workflows/wiki.yml` on every push to `main` that touches
-`docs/`. The workflow force-pushes a single commit: the wiki is generated output, and
-its history would otherwise be one commit per docs rebuild forever.
+mirrored into it by the `wiki` job in CI. That job runs after the checks pass —
+publishing documentation for a commit that fails its own tests is worse than
+publishing nothing — and only when the push actually changed `docs/`. The mirror is
+idempotent, so a run that finds the wiki already matching does nothing.
 
-Before it can run, the wiki needs to exist. GitHub only creates the wiki repository
+Mirror, not merge: a page that stops being generated stops existing, and anything
+edited by hand in the wiki is overwritten by the next sync.
+
+Before it can publish, the wiki has to exist. GitHub only creates the wiki repository
 once a first page has been saved, and there is no API for that:
 
-1. Settings → Features → tick **Wikis**.
-2. Open the Wiki tab and save any page — the content does not matter, the next sync
-   overwrites it.
+1. Open the repository's **Wiki** tab and save any page — the content does not
+   matter, the next sync replaces it.
+2. Re-run the workflow, or push anything that touches `docs/`.
 
-The workflow fails with that instruction if the wiki repository is missing, rather
-than failing obscurely. Run it by hand from the Actions tab to publish without
-waiting for a push.
+Until then the job warns and writes those instructions into the run summary rather
+than failing the build. Running CI by hand from the Actions tab republishes the wiki
+without waiting for a push.
 
 ## Regenerating the schema
 

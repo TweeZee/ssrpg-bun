@@ -149,3 +149,122 @@ jobs:
             --title "Schema drift: the Stonescript manual has moved on" \
             --label schema-drift \
             --body-file issue-body.md
+
+  wiki:
+    name: Publish docs/ to the wiki
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only after the checks pass: the docs step is what guarantees docs/ matches
+    # the sources, and publishing documentation for a broken commit is worse
+    # than publishing nothing.
+    needs: checks
+    if: >-
+      ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main')
+          || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The whole history, so the previous commit can be diffed against.
+          fetch-depth: 0
+
+      - name: Did docs/ change?
+        id: docs
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          # A manual run republishes unconditionally. So does anything without
+          # a usable previous commit — a first push, or a force-push that
+          # rewrote it away. The sync itself is a no-op when nothing differs,
+          # so erring towards running it is cheap.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+            || [ -z "${BEFORE:-}" ] \
+            || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --quiet "$BEFORE" "$AFTER" -- docs; then
+            echo "docs/ is unchanged since ${BEFORE}; leaving the wiki alone."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git diff --name-only "$BEFORE" "$AFTER" -- docs | head -5
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Mirror docs/ into the wiki repository
+        if: ${{ steps.docs.outputs.changed == 'true' }}
+        env:
+          WIKI_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          wiki_url="https://x-access-token:${WIKI_TOKEN}@github.com/${REPOSITORY}.wiki.git"
+
+          # GitHub only creates the wiki repository once a first page has been
+          # saved, and there is no API for that. That is a setup step nobody has
+          # done yet rather than a problem with this commit, so it reports
+          # loudly and stops instead of failing the build.
+          if ! git ls-remote "$wiki_url" >/dev/null 2>&1; then
+            echo "::warning title=Wiki not published::The wiki repository does not exist yet — see the run summary."
+            {
+              echo "### Wiki not published"
+              echo
+              echo "\`docs/\` changed, but \`${REPOSITORY}.wiki.git\` does not exist yet."
+              echo "GitHub only creates it once a first page has been saved, and there is"
+              echo "no API for that:"
+              echo
+              echo "1. Open the repository's **Wiki** tab and save any page. The content"
+              echo "   does not matter — this sync replaces it."
+              echo "2. Re-run this workflow, or push anything that touches \`docs/\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git clone --quiet "$wiki_url" wiki
+          cd wiki
+
+          # Which branch to publish to. Wikis were created with a 'master'
+          # default for years and newer ones follow the account default, so it
+          # is read from the remote rather than assumed. A wiki whose HEAD
+          # points at a branch that does not exist yet clones as empty, which
+          # would otherwise produce an unrelated history and a rejected push.
+          branch=$(git symbolic-ref --quiet --short HEAD || echo "")
+          if ! git rev-parse --verify --quiet HEAD >/dev/null; then
+            existing=$(git ls-remote --heads origin \
+              | awk 'NR == 1 { sub("refs/heads/", "", $2); print $2 }')
+            if [ -n "$existing" ]; then
+              git fetch --quiet origin "$existing"
+              git checkout --quiet -B "$existing" FETCH_HEAD
+              branch="$existing"
+            else
+              branch=${branch:-master}
+              git checkout --quiet -B "$branch"
+            fi
+          fi
+          echo "Publishing to wiki branch: $branch"
+
+          # Mirror rather than merge, so a page that stops being generated
+          # stops existing.
+          git rm -rq --ignore-unmatch .
+          cp -R ../docs/. .
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "The wiki already matches docs/; nothing to publish."
+            exit 0
+          fi
+
+          git diff --cached --stat | tail -3
+          git commit -q -m "Publish docs from ${SOURCE_SHA}"
+          git push --quiet origin "HEAD:${branch}"
+          echo "Published to https://github.com/${REPOSITORY}/wiki"
