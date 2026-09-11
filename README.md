@@ -8,6 +8,7 @@ This is a port of [SSRPGInterface](https://github.com/artificial-potato/SSRPGInt
 
 ## Features
 
+- **The whole StoneScript API, typed.** 234 members modelled at the type level, so `ssrpg.call("foe.hp")` resolves to `number | null`, `ssrpg.call("loc.begin")` to `boolean`, and `ssrpg.call("foe.hitpoints")` to a compile error.
 - **Typed high-level API** mirroring the in-game namespaces: `ssrpg.foe.hp()`, `ssrpg.item.CanActivate("skeleton_arm")`, `ssrpg.loc.begin()`.
 - **Command queueing** — commands are collected during a step and flushed in a single batch when your callback returns.
 - **Per-step caching** — repeated reads of the same value cost one round trip; concurrent reads share it.
@@ -110,16 +111,17 @@ Available both on the interface and on `ssrpg.command`:
 | Method | StoneScript |
 | --- | --- |
 | `ssrpg.print(text, options?)` | `>` |
-| `ssrpg.play(...args)` | `play` |
-| `ssrpg.equip(...items)` / `equipL` / `equipR` | `equip` / `equipL` / `equipR` |
+| `ssrpg.play(sound, pitch?)` | `play` |
+| `ssrpg.equip(...criteria)` / `equipL` / `equipR` | `equip` / `equipL` / `equipR` |
 | `ssrpg.loadout(index)` | `loadout` |
-| `ssrpg.activate("R" \| "L")` | `activate` |
-| `ssrpg.enable(...names)` / `ssrpg.disable(...names)` | `enable` / `disable` |
+| `ssrpg.activate(target)` | `activate` |
+| `ssrpg.enable(feature)` / `ssrpg.disable(feature)` | `enable` / `disable` |
 | `ssrpg.brew(...materials)` | `brew` |
 | `ssrpg.loc.Leave()` / `ssrpg.loc.Pause()` | `loc.Leave` / `loc.Pause` |
 
-`print` options: `x`, `y`, `color`, and the mutually exclusive anchors `face`, `player`, `head`, `foe`, `center`.
-Pass an array as the first argument to concatenate several values.
+`print` options: `x`, `y`, `color` (`#rrggbb` or a preset such as `#red`), and the
+mutually exclusive anchors `face`, `player`, `head`, `foe`, `center`. Pass an array as
+the first argument to concatenate several values.
 
 Queued commands are synchronous — they only add to the queue. The queue is flushed
 once, at the end of the step, and cleared at the start of the next one.
@@ -144,6 +146,10 @@ boolean accessors to `boolean`, and name accessors to `string | null`.
 the Python reference implementation never enabled them, so the game may not expose
 them over MindConnect yet.
 
+Namespaces the manual documents but this library does not wrap in an object —
+`math`, `string`, `color`, `music`, `ambient`, `sys`, `ui`, `int.Parse`, `Type` — are
+all reachable through the typed `ssrpg.call`.
+
 ### Stonescript variables
 
 ```ts
@@ -154,6 +160,135 @@ await ssrpg.var.has("mode");           // exists?
 
 These are never cached — the in-game script can change a variable between two reads
 inside the same step.
+
+## The typed StoneScript API
+
+`call`, `multiCall`, `readAll` and `queue` are checked against
+[`StoneScriptAPI`](src/schema/api.ts), a type-level model of the game's own API
+built from the [Stonescript manual](https://stonestoryrpg.com/stonescript/beta.html)
+(beta, v4.27.1). 234 members: every documented variable and every function whose
+value can cross the wire.
+
+### Names are checked, results are narrowed
+
+```ts
+const hp       = await ssrpg.call("hp");                    // number | null
+const foeName  = await ssrpg.call("foe.name");              // string | null
+const starting = await ssrpg.call("loc.begin");             // boolean
+const symbol   = await ssrpg.call("draw.GetSymbol", 10, 5); // string | null
+
+await ssrpg.call("foe.hitpoints");        // no such member
+await ssrpg.call("foe.GetCount");         // needs a distance
+await ssrpg.call("foe.GetCount", "far");  // and it has to be a number
+await ssrpg.call("foe.hp", 1);            // takes no arguments
+```
+
+Each member carries the manual's own description, so the editor shows you what
+`foe.state` means while you are completing the string.
+
+Integers resolve to `number | null`, booleans to `boolean` (a missing boolean is
+false in StoneScript), names to `string | null`, and side-effecting calls to
+`null`. Floats are the interesting case: the protocol is untyped and only
+integer literals are converted, so a fractional value arrives as a numeric
+string — and the type says so with a template literal:
+
+```ts
+const root = await ssrpg.call("math.Sqrt", 2); // number | `${number}` | null
+```
+
+### Member families come from template literals
+
+Both hands, both clocks, all four buff collections and the rest are generated
+rather than listed, which is why `item.right.id`, `utc.hour`,
+`foe.debuffs.GetTime` and `res.crystals` are all known — and `item.middle.gp`
+and `res.copper` are not:
+
+```ts
+type Hand = "left" | "right";
+type ItemHandAPI = { [K in `item.${Hand}`]: Read<string> } & {
+  [K in `item.${Hand}.id`]: Read<string>;
+} & { [K in `item.${Hand}.${"gp" | "state" | "time"}`]: Read<number> };
+```
+
+### Batches keep one type per position
+
+```ts
+const [name, health, begun] = await ssrpg.multiCall([
+  ["foe.name"],
+  ["foe.hp"],
+  ["loc.begin"],
+]);
+// string | null, number | null, boolean — in one round trip
+```
+
+Or read by name and get back an object shaped like the request:
+
+```ts
+const state = await ssrpg.readAll({
+  hp: "hp",
+  foe: "foe.name",
+  nearby: ["foe.GetCount", 8],
+  starting: "loc.begin",
+});
+// state.hp: number | null, state.foe: string | null,
+// state.nearby: number | null, state.starting: boolean
+```
+
+### Commands are checked too
+
+Identifier sets come straight from the manual's appendices — 28 ability ids, 432
+sound effects, 85 music tracks, 16 ambient loops, 22 bindable actions, 31 search
+filters. The open ones are `Loose`, so documented values autocomplete while
+anything else is still accepted:
+
+```ts
+ssrpg.activate("R");                                  // hand, potion or ability
+ssrpg.play("bat_wing", 120);                          // sound id + pitch
+ssrpg.equip("hammer", "*7", "-socket");               // criteria, filters, stars
+ssrpg.print("careful!", { x: 1, y: 1, color: "#ff0000" });
+ssrpg.disable("hud ru");                              // resources + utility belt
+ssrpg.disable("hud rx");                              // 'x' is not a HUD flag
+ssrpg.print("hi", { x: 1, y: 1, color: "ff0000" });   // a colour needs a '#'
+ssrpg.loadout("1");                                   // a loadout is a number
+```
+
+`hud ru` is validated a character at a time, because enumerating the
+combinations would mean every permutation of every subset of six flags:
+
+```ts
+type HudFlag = "p" | "f" | "a" | "r" | "b" | "u";
+type ValidateHudOpts<S extends string> = S extends ""
+  ? true
+  : S extends `${infer Head}${infer Rest}`
+    ? Head extends HudFlag ? ValidateHudOpts<Rest> : false
+    : false;
+```
+
+`StrictColor<S>` does the same for `#rrggbb`, checking the six digits by
+inference rather than building a union of 113 million members.
+
+### Escape hatches
+
+The schema tracks a moving target, so nothing is a dead end. `callRaw`,
+`callUncachedRaw`, `multiCallRaw` and `queueRaw` take any name and return the
+untyped `CallValue`:
+
+```ts
+const value = await ssrpg.callRaw("foe.somethingTheGameJustAdded");
+```
+
+To get a new member typed instead, extend the registry by declaration merging:
+
+```ts
+declare module "ssrpg-bun" {
+  interface StoneScriptAPI {
+    "foe.newThing": { args: []; returns: number };
+  }
+}
+```
+
+`examples/typed.ts` is a runnable tour of all of this, and `test/types.test-d.ts`
+asserts the inferences — including that every invalid call above stays invalid.
 
 ## Low-level API
 
@@ -226,6 +361,14 @@ bugs were fixed along the way.
 - `PascalCase` StoneScript function names are preserved (`item.GetCooldown`), while
   the lowercase command names stay lowercase (`equipR`, `brew`) — in both cases the
   JavaScript name is the StoneScript name.
+- **`call` and friends only accept names the game has.** Python passed any string
+  through; here an unknown name is a compile error and `callRaw` is the way out.
+- **Command signatures follow the manual.** `play(sound, pitch?)`, `activate(target)`
+  and `enable`/`disable(feature)` replace the Python variadics, which joined
+  arbitrary arguments with spaces and let `activate("potion", "R")` build a payload
+  the game does not parse.
+- **`key.GetActKey1` is deprecated**: the manual documents `GetActKey`, `GetActKey2`
+  and `GetKeyAct`, but no `GetActKey1`. The last of those is now available too.
 
 ## Limitations
 
@@ -253,23 +396,33 @@ CI alongside `bun test`.
 
 `docs/` is generated output and is not committed.
 
+## Regenerating the schema
+
+`src/schema/ids.ts` is generated from the manual's appendices; `src/schema/api.ts`
+is hand-maintained but its per-member descriptions come from the same source. Both
+are pinned to beta v4.27.1. When the game moves on, re-read
+[the manual](https://stonestoryrpg.com/stonescript/beta.html) and update them
+together — `test/types.test-d.ts` will catch anything that regresses.
+
 ## Development
 
 ```bash
 bun install
 bun test          # unit tests + end-to-end tests against a mock MindConnect server
-bun run typecheck
+bun run typecheck # includes the type-level assertions in test/types.test-d.ts
 bun run docs
 ```
 
 `test/mock-server.ts` implements enough of the game side of the protocol to exercise
-the client without the game running.
+the client without the game running. `test/types.test-d.ts` holds compile-time
+assertions — it never runs, and a broken inference fails `bun run typecheck`.
 
 ## Project layout
 
 ```
 src/
   index.ts        public exports
+  schema/         the StoneScript API as types (ids.ts is generated)
   interface.ts    SSRPGInterface — caching, stepping, high-level API
   client.ts       MindConnectClient — socket, framing, request correlation
   protocol.ts     wire format: packet building, value casting, signal parsing
@@ -277,6 +430,7 @@ src/
   types.ts        shared types
   commands/       one module per StoneScript namespace
 examples/test.ts  port of the Python SSRPGtest.py
+examples/typed.ts tour of the typed StoneScript surface
 typedoc.json      API reference build
 ```
 

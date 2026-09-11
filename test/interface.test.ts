@@ -238,6 +238,87 @@ describe("connection lifecycle", () => {
   });
 });
 
+describe("typed reads", () => {
+  test("readAll returns one narrowed value per key in a single batch", async () => {
+    const server = new MockServer({
+      values: { hp: "80", "foe.name": "Wound Licker", "foe.GetCount": "3", "loc.begin": "True" },
+    });
+    const ssrpg = await harness(server);
+
+    const state = await ssrpg.readAll({
+      hp: "hp",
+      foe: "foe.name",
+      nearby: ["foe.GetCount", 8],
+      starting: "loc.begin",
+    });
+
+    expect(state).toEqual({ hp: 80, foe: "Wound Licker", nearby: 3, starting: true });
+    expect(server.batches).toHaveLength(1);
+    expect(server.batches[0]!.requests).toEqual([
+      { name: "hp", args: [] },
+      { name: "foe.name", args: [] },
+      { name: "foe.GetCount", args: ["8"] },
+      { name: "loc.begin", args: [] },
+    ]);
+  });
+
+  test("call reaches members the high-level namespaces do not wrap", async () => {
+    const server = new MockServer({ values: { rng: "4242", "sys.os": "Linux", "utc.year": "2026" } });
+    const ssrpg = await harness(server);
+
+    expect(await ssrpg.call("rng")).toBe(4242);
+    expect(await ssrpg.call("sys.os")).toBe("Linux");
+    expect(await ssrpg.call("utc.year")).toBe(2026);
+  });
+
+  test("callRaw still reaches a member the schema does not know", async () => {
+    const server = new MockServer({ values: { "foe.somethingNew": "7" } });
+    const ssrpg = await harness(server);
+
+    expect(await ssrpg.callRaw("foe.somethingNew")).toBe(7);
+  });
+});
+
+describe("typed commands", () => {
+  test("build the payloads the game expects", async () => {
+    const server = new MockServer();
+    const ssrpg = await harness(server);
+
+    server.sendSignal("pre");
+    await ssrpg.step(() => {
+      ssrpg.play("bat_wing");
+      ssrpg.play("ant_attack", 120);
+      ssrpg.activate("R");
+      ssrpg.activate("skeleton_arm");
+      ssrpg.equip("hammer", "*7", "-socket");
+      ssrpg.equipL("poison", "wand");
+      ssrpg.disable("hud ru");
+      ssrpg.disable("abilities");
+      ssrpg.enable("hud");
+      ssrpg.loadout(1);
+      ssrpg.brew("tar", "wood");
+      ssrpg.queue("player.ShowScaredFace", 30);
+      ssrpg.queue("loc.Pause");
+    });
+
+    expect(server.batches.at(-1)!.requests).toEqual([
+      { name: "play", args: ["bat_wing"] },
+      { name: "play", args: ["ant_attack 120"] },
+      { name: "activate", args: ["R"] },
+      { name: "activate", args: ["skeleton_arm"] },
+      { name: "equip", args: ["hammer *7 -socket"] },
+      { name: "equipL", args: ["poison wand"] },
+      { name: "disable", args: ["hud ru"] },
+      { name: "disable", args: ["abilities"] },
+      { name: "enable", args: ["hud"] },
+      { name: "loadout", args: ["1"] },
+      { name: "brew", args: ["tar+wood"] },
+      { name: "player.ShowScaredFace", args: ["30"] },
+      { name: "loc.Pause", args: [] },
+    ]);
+  });
+});
+
 describe("print options", () => {
   test("encode positioning prefixes", async () => {
     const server = new MockServer();
@@ -247,7 +328,7 @@ describe("print options", () => {
     await ssrpg.step(() => {
       ssrpg.print("plain");
       ssrpg.print("at", { x: 3, y: 4 });
-      ssrpg.print("red", { x: 3, y: 4, color: "r" });
+      ssrpg.print("red", { x: 3, y: 4, color: "#ff0000" });
       ssrpg.print("onplayer", { x: 1, y: 1, player: true });
       ssrpg.print("onhead", { x: 1, y: 1, head: true });
       ssrpg.print("onfoe", { x: 1, y: 1, foe: true });
@@ -259,7 +340,7 @@ describe("print options", () => {
     expect(server.batches.at(-1)!.requests.map((request) => request.args[0])).toEqual([
       "plain",
       "`3,4,at",
-      "`3,4,r,red",
+      "`3,4,#ff0000,red",
       "o1,1,onplayer",
       "h1,1,onhead",
       "f1,1,onfoe",

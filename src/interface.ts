@@ -7,8 +7,21 @@ import { MindConnectClient, type ClientOptions } from "./client";
 import { ConnectionClosedError, ModeError } from "./errors";
 import { PROTOCOL_VERSION } from "./protocol";
 import type { CallValue, Mode, Request, Scalar, StepContext } from "./types";
+import type {
+  ArgsOf,
+  CallName,
+  MultiCallResults,
+  QueueArgsOf,
+  QueueName,
+  ReadSpec,
+  ResultOf,
+  ResultOfSpec,
+  TypedRequest,
+} from "./schema/index";
 
 import { CommandQueue, type PrintArg, type PrintOptions } from "./commands/command";
+import type { CallHost } from "./commands/base";
+import type { ActivateTarget, ItemCriteria, Loose, SoundId, ToggleFeature, HudOpts } from "./schema/index";
 import { createAI, type AI } from "./commands/ai";
 import { createArmor, type Armor } from "./commands/armor";
 import { createPlayerBuffs, type PlayerBuffs } from "./commands/buffs";
@@ -219,30 +232,40 @@ export class SSRPGInterface {
     this.#mode = mode;
     this.#warnOnVersionMismatch = options.warnOnVersionMismatch ?? true;
     this.#client = new MindConnectClient(options);
-    this.command = new CommandQueue(this);
+    this.command = new CommandQueue({
+      multiCall: (requests) => this.multiCallRaw(requests),
+    });
 
-    this.ai = createAI(this);
-    this.armor = createArmor(this);
-    this.buffs = createPlayerBuffs(this);
-    this.debuffs = createPlayerDebuffs(this);
-    this.draw = createDraw(this);
-    this.encounter = createEncounter(this);
-    this.event = createEvent(this);
-    this.foe = createFoe(this);
-    this.harvest = createHarvest(this);
-    this.input = createInput(this);
-    this.item = createItem(this);
-    this.loc = createLoc(this);
-    this.pickup = createPickup(this);
-    this.player = createPlayer(this);
-    this.pos = createPosition(this);
-    this.res = createResource(this);
-    this.screen = createScreen(this);
-    this.summon = createSummon(this);
-    this.var = createVariable(this);
-    this.key = createKey(this);
-    this.storage = createStorage(this);
-    this.te = createText(this);
+    // The namespace wrappers build their own member paths, so they go through
+    // the unchecked entry points rather than the typed public ones.
+    const host: CallHost = {
+      call: (command, ...args) => this.callRaw(command, ...args),
+      callUncached: (command, ...args) => this.callUncachedRaw(command, ...args),
+      queue: (command, ...args) => this.command.pushRaw(command, ...args),
+    };
+
+    this.ai = createAI(host);
+    this.armor = createArmor(host);
+    this.buffs = createPlayerBuffs(host);
+    this.debuffs = createPlayerDebuffs(host);
+    this.draw = createDraw(host);
+    this.encounter = createEncounter(host);
+    this.event = createEvent(host);
+    this.foe = createFoe(host);
+    this.harvest = createHarvest(host);
+    this.input = createInput(host);
+    this.item = createItem(host);
+    this.loc = createLoc(host);
+    this.pickup = createPickup(host);
+    this.player = createPlayer(host);
+    this.pos = createPosition(host);
+    this.res = createResource(host);
+    this.screen = createScreen(host);
+    this.summon = createSummon(host);
+    this.var = createVariable(host);
+    this.key = createKey(host);
+    this.storage = createStorage(host);
+    this.te = createText(host);
   }
 
   /** The mode this interface was constructed with. */
@@ -394,6 +417,11 @@ export class SSRPGInterface {
    * Reads a variable or calls a function.
    *
    * @remarks
+   * The name is checked against {@link StoneScriptAPI}, so a typo is a compile
+   * error, the argument list is the one that member actually takes, and the
+   * result is narrowed to that member's own type instead of
+   * {@link CallValue}.
+   *
    * The result is memoised for the rest of the current step, so repeated reads
    * of the same value cost one round trip. Concurrent reads share the pending
    * promise rather than issuing a second request. A failed call is evicted, so
@@ -403,25 +431,22 @@ export class SSRPGInterface {
    * {@link SSRPGInterface.callUncached} instead, or the cache will swallow the
    * second call.
    *
-   * @param command - Fully qualified StoneScript name, e.g. `foe.name`.
-   * @param args - Arguments to pass to the function.
-   * @returns The value, converted by {@link autoCast}.
+   * @typeParam N - The member name, inferred from the argument.
+   * @param name - A member of the StoneScript API, e.g. `foe.name`.
+   * @param args - The arguments that member takes.
+   * @returns The value, narrowed to that member's return type.
    *
    * @example
    * ```ts
-   * const foeName = await ssrpg.call("foe.name");
-   * const symbol = await ssrpg.call("draw.GetSymbol", 10, 5);
+   * const name = await ssrpg.call("foe.name");            // string | null
+   * const near = await ssrpg.call("foe.GetCount", 8);     // number | null
+   * const begin = await ssrpg.call("loc.begin");          // boolean
+   * await ssrpg.call("foe.nope");                         // compile error
+   * await ssrpg.call("foe.GetCount");                     // compile error
    * ```
    */
-  call(command: string, ...args: Scalar[]): Promise<CallValue> {
-    const key = JSON.stringify([command, ...args]);
-    const cached = this.#cache.get(key);
-    if (cached) return cached;
-
-    const pending = this.callUncached(command, ...args);
-    this.#cache.set(key, pending);
-    pending.catch(() => this.#cache.delete(key));
-    return pending;
+  call<N extends CallName>(name: N, ...args: ArgsOf<N>): Promise<ResultOf<N>> {
+    return this.callRaw(name, ...(args as Scalar[])) as Promise<ResultOf<N>>;
   }
 
   /**
@@ -429,38 +454,135 @@ export class SSRPGInterface {
    *
    * @remarks
    * The right choice for calls with side effects and for values the in-game
-   * script can change mid-step.
+   * script can change mid-step. Typed exactly like {@link SSRPGInterface.call}.
    *
-   * @param command - Fully qualified StoneScript name, e.g. `var.get`.
-   * @param args - Arguments to pass to the function.
-   * @returns The value, converted by {@link autoCast}.
+   * @typeParam N - The member name, inferred from the argument.
+   * @param name - A member of the StoneScript API, e.g. `var.get`.
+   * @param args - The arguments that member takes.
+   * @returns The value, narrowed to that member's return type.
    */
-  async callUncached(command: string, ...args: Scalar[]): Promise<CallValue> {
-    const values = await this.#client.sendAndReceive([[command, ...args]]);
-    return values.length > 0 ? values[0]! : null;
+  callUncached<N extends CallName>(name: N, ...args: ArgsOf<N>): Promise<ResultOf<N>> {
+    return this.callUncachedRaw(name, ...(args as Scalar[])) as Promise<ResultOf<N>>;
   }
 
   /**
-   * Sends several requests in a single round trip.
+   * Sends several requests in a single round trip, narrowing each result.
    *
    * @remarks
    * Never cached, in either direction. This is the cheapest way to read a lot
    * of state at once, since one packet replaces one round trip per value.
    *
+   * The returned tuple lines up with the requests position by position, each
+   * carrying the type of the member that produced it — so destructuring gives
+   * you real types rather than {@link CallValue}.
+   *
+   * @typeParam R - The request tuple, inferred as literal types.
    * @param requests - The batch to send.
-   * @returns One value per request, in order.
+   * @returns One narrowed value per request, in order.
    *
    * @example
    * ```ts
-   * const [name, id, symbol] = await ssrpg.multiCall([
+   * const [name, hp, begin] = await ssrpg.multiCall([
    *   ["foe.name"],
-   *   ["loc.id"],
-   *   ["draw.GetSymbol", 10, 5],
+   *   ["foe.hp"],
+   *   ["loc.begin"],
    * ]);
-   * // -> ["Wound Licker", "caustic_caves", "-"]
+   * // name: string | null, hp: number | null, begin: boolean
    * ```
    */
-  async multiCall(requests: readonly Request[]): Promise<CallValue[]> {
+  multiCall<const R extends readonly TypedRequest[]>(
+    requests: R,
+  ): Promise<MultiCallResults<R>> {
+    return this.multiCallRaw(requests as readonly Request[]) as Promise<MultiCallResults<R>>;
+  }
+
+  /**
+   * Reads several members in one round trip and returns them by name.
+   *
+   * @remarks
+   * The result object has exactly the keys you passed, each narrowed to the
+   * type of the member behind it. A value is either a bare member name or a
+   * request tuple when it needs arguments. Not cached.
+   *
+   * @typeParam M - The map of result names to members, inferred as literals.
+   * @param members - What to read, keyed by the name you want it under.
+   * @returns One property per key, narrowed to that member's return type.
+   *
+   * @example
+   * ```ts
+   * const state = await ssrpg.readAll({
+   *   hp: "hp",
+   *   foe: "foe.name",
+   *   nearby: ["foe.GetCount", 8],
+   *   starting: "loc.begin",
+   * });
+   * // state.hp: number | null
+   * // state.foe: string | null
+   * // state.nearby: number | null
+   * // state.starting: boolean
+   * ```
+   */
+  async readAll<const M extends Readonly<Record<string, ReadSpec>>>(
+    members: M,
+  ): Promise<{ [K in keyof M]: ResultOfSpec<M[K]> }> {
+    const keys = Object.keys(members) as (keyof M & string)[];
+    const requests = keys.map((key) => {
+      const spec = members[key] as ReadSpec;
+      return (typeof spec === "string" ? [spec] : spec) as Request;
+    });
+
+    const values = await this.multiCallRaw(requests);
+    const result = {} as { [K in keyof M]: ResultOfSpec<M[K]> };
+    keys.forEach((key, index) => {
+      result[key] = values[index] as never;
+    });
+    return result;
+  }
+
+  /**
+   * Reads a variable or calls a function without checking the name.
+   *
+   * @remarks
+   * The escape hatch for a member this library does not know yet — a new game
+   * version, or a name the schema is missing. Cached like
+   * {@link SSRPGInterface.call}, but the result is the untyped
+   * {@link CallValue}.
+   *
+   * @param command - Fully qualified StoneScript name.
+   * @param args - Arguments to pass to the function.
+   * @returns The value, converted by {@link autoCast}.
+   */
+  callRaw(command: string, ...args: Scalar[]): Promise<CallValue> {
+    const key = JSON.stringify([command, ...args]);
+    const cached = this.#cache.get(key);
+    if (cached) return cached;
+
+    const pending = this.callUncachedRaw(command, ...args);
+    this.#cache.set(key, pending);
+    pending.catch(() => this.#cache.delete(key));
+    return pending;
+  }
+
+  /**
+   * Reads a variable or calls a function without checking the name or caching
+   * the result.
+   *
+   * @param command - Fully qualified StoneScript name.
+   * @param args - Arguments to pass to the function.
+   * @returns The value, converted by {@link autoCast}.
+   */
+  async callUncachedRaw(command: string, ...args: Scalar[]): Promise<CallValue> {
+    const values = await this.#client.sendAndReceive([[command, ...args]]);
+    return values.length > 0 ? values[0]! : null;
+  }
+
+  /**
+   * Sends several requests in a single round trip without checking the names.
+   *
+   * @param requests - The batch to send.
+   * @returns One untyped value per request, in order.
+   */
+  async multiCallRaw(requests: readonly Request[]): Promise<CallValue[]> {
     return this.#client.sendAndReceive(requests);
   }
 
@@ -492,11 +614,22 @@ export class SSRPGInterface {
   /**
    * Queues a request to be sent when the current step ends.
    *
-   * @param command - Fully qualified StoneScript name, e.g. `loc.Pause`.
+   * @typeParam N - The member or command name, inferred from the argument.
+   * @param name - A queueable StoneScript name, e.g. `loc.Pause`.
+   * @param args - The arguments that name takes.
+   */
+  queue<N extends QueueName>(name: N, ...args: QueueArgsOf<N>): void {
+    this.command.push(name, ...args);
+  }
+
+  /**
+   * Queues a request without checking the name.
+   *
+   * @param command - Fully qualified StoneScript name.
    * @param args - Arguments to pass along.
    */
-  queue(command: string, ...args: Scalar[]): void {
-    this.command.push(command, ...args);
+  queueRaw(command: string, ...args: Scalar[]): void {
+    this.command.pushRaw(command, ...args);
   }
 
   /**
@@ -526,7 +659,7 @@ export class SSRPGInterface {
       }
     }
 
-    const symbols = (await this.multiCall(requests)).map((value) =>
+    const symbols = (await this.multiCallRaw(requests)).map((value) =>
       value === null ? " " : String(value),
     );
 
@@ -631,47 +764,51 @@ export class SSRPGInterface {
   }
 
   /**
-   * Queues `play` — plays a sound.
+   * Queues `play` — plays a sound effect.
    *
-   * @param args - Sound name and any modifiers.
+   * @param sound - Sound id; the documented ids autocomplete.
+   * @param pitch - Playback pitch, `100` being unchanged.
    *
    * @see {@link CommandQueue.play}
    */
-  play(...args: PrintArg[]): void {
-    this.command.play(...args);
+  play(sound: Loose<SoundId>, pitch?: number): void {
+    this.command.play(sound, pitch);
   }
 
   /**
-   * Queues `equipR` — equips items to the right hand.
+   * Queues `equipR` — equips an item to the right hand.
    *
-   * @param items - Item names, in order of preference.
+   * @param criteria - Search criteria: name fragments, filter tags, `*n` star
+   * levels, `+n` enchantment bonuses, or `-` negations.
    *
    * @see {@link CommandQueue.equipR}
    */
-  equipR(...items: string[]): void {
-    this.command.equipR(...items);
+  equipR(...criteria: ItemCriteria[]): void {
+    this.command.equipR(...criteria);
   }
 
   /**
-   * Queues `equipL` — equips items to the left hand.
+   * Queues `equipL` — equips an item to the left hand.
    *
-   * @param items - Item names, in order of preference.
+   * @param criteria - Search criteria: name fragments, filter tags, `*n` star
+   * levels, `+n` enchantment bonuses, or `-` negations.
    *
    * @see {@link CommandQueue.equipL}
    */
-  equipL(...items: string[]): void {
-    this.command.equipL(...items);
+  equipL(...criteria: ItemCriteria[]): void {
+    this.command.equipL(...criteria);
   }
 
   /**
-   * Queues `equip` — equips items to whichever hand fits best.
+   * Queues `equip` — equips an item to whichever hand fits best.
    *
-   * @param items - Item names, in order of preference.
+   * @param criteria - Search criteria: name fragments, filter tags, `*n` star
+   * levels, `+n` enchantment bonuses, or `-` negations.
    *
    * @see {@link CommandQueue.equip}
    */
-  equip(...items: string[]): void {
-    this.command.equip(...items);
+  equip(...criteria: ItemCriteria[]): void {
+    this.command.equip(...criteria);
   }
 
   /**
@@ -686,36 +823,40 @@ export class SSRPGInterface {
   }
 
   /**
-   * Queues `activate` — activates the item in the given hand.
+   * Queues `activate` — activates an item ability.
    *
-   * @param args - `"R"` or `"L"`, plus any modifiers.
+   * @param target - A hand, the potion, or an ability id.
    *
    * @see {@link CommandQueue.activate}, {@link Item.CanActivate}
    */
-  activate(...args: PrintArg[]): void {
-    this.command.activate(...args);
+  activate(target: ActivateTarget): void {
+    this.command.activate(target);
   }
 
   /**
-   * Queues `enable` — enables items or abilities.
+   * Queues `enable` — restores a game feature.
    *
-   * @param names - Item or ability names.
+   * @param feature - The feature to restore, or `hud` plus element flags.
    *
    * @see {@link CommandQueue.enable}
    */
-  enable(...names: string[]): void {
-    this.command.enable(...names);
+  enable(feature: ToggleFeature): void;
+  enable<F extends string>(hud: `hud ${HudOpts<F>}`): void;
+  enable(feature: ToggleFeature): void {
+    this.command.enable(feature);
   }
 
   /**
-   * Queues `disable` — disables items or abilities.
+   * Queues `disable` — turns a game feature off.
    *
-   * @param names - Item or ability names.
+   * @param feature - The feature to disable, or `hud` plus element flags.
    *
    * @see {@link CommandQueue.disable}
    */
-  disable(...names: string[]): void {
-    this.command.disable(...names);
+  disable(feature: ToggleFeature): void;
+  disable<F extends string>(hud: `hud ${HudOpts<F>}`): void;
+  disable(feature: ToggleFeature): void {
+    this.command.disable(feature);
   }
 
   /**
@@ -737,8 +878,8 @@ export class SSRPGInterface {
    * @param name - Variable name, e.g. `hp`.
    * @returns The number, or `null` when the value is absent or not an integer.
    */
-  async #int(name: string): Promise<number | null> {
-    const value = await this.call(name);
+  async #int(name: CallName): Promise<number | null> {
+    const value = await this.callRaw(name);
     return typeof value === "number" ? value : null;
   }
 

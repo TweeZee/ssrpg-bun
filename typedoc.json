@@ -1,6 +1,8 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": ["src/index.ts"],
+  "entryPoints": [
+    "src/index.ts"
+  ],
   "out": "docs",
   "name": "ssrpg-bun",
   "readme": "README.md",
@@ -10,7 +12,9 @@
     "Stone Story RPG": "https://stonestoryrpg.com/",
     "SSRPGInterface (Python)": "https://github.com/artificial-potato/SSRPGInterface"
   },
-  "sort": ["source-order"],
+  "sort": [
+    "source-order"
+  ],
   "excludePrivate": true,
   "excludeInternal": true,
   "validation": {
@@ -21,5 +25,18 @@
     "unusedMergeModuleWith": true
   },
   "treatWarningsAsErrors": true,
-  "treatValidationWarningsAsErrors": true
+  "treatValidationWarningsAsErrors": true,
+  "requiredToBeDocumented": [
+    "Enum",
+    "EnumMember",
+    "Variable",
+    "Function",
+    "Class",
+    "Interface",
+    "Method",
+    "CallSignature",
+    "GetSignature",
+    "SetSignature",
+    "TypeAlias"
+  ]
 }

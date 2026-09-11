@@ -4,6 +4,7 @@
  * @packageDocumentation
  */
 import { namespace, type CallHost } from "./base";
+import type { Color } from "../schema/index";
 
 /**
  * `draw` — direct drawing on the game screen.
@@ -37,12 +38,12 @@ export interface Draw {
    *
    * @param x - Screen column of the top-left cell.
    * @param y - Screen row of the top-left cell.
-   * @param color - StoneScript colour code.
+   * @param color - `#rrggbb`, or a preset such as `#red`.
    * @param w - Block width. Omit together with `h` to fill a single cell.
    * @param h - Block height.
    * @returns A promise that settles once the game has acknowledged the call.
    */
-  Bg(x: number, y: number, color: string, w?: number, h?: number): Promise<void>;
+  Bg(x: number, y: number, color: Color, w?: number, h?: number): Promise<void>;
 
   /**
    * Calls `draw.Box` — draws a rectangle outline.
@@ -51,11 +52,11 @@ export interface Draw {
    * @param y - Screen row of the top-left corner.
    * @param w - Width in cells.
    * @param h - Height in cells.
-   * @param color - StoneScript colour code.
+   * @param color - `#rrggbb`, or a preset such as `#red`.
    * @param style - Border style index, as defined by StoneScript.
    * @returns A promise that settles once the game has acknowledged the call.
    */
-  Box(x: number, y: number, w: number, h: number, color: string, style: number): Promise<void>;
+  Box(x: number, y: number, w: number, h: number, color: Color, style: number): Promise<void>;
 
   /**
    * Calls `draw.GetSymbol` — reads the symbol currently drawn at a position.

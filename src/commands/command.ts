@@ -9,6 +9,18 @@
  * @packageDocumentation
  */
 import type { CallValue, Request, Scalar } from "../types";
+import type {
+  ActivateTarget,
+  Color,
+  CommandName,
+  HudOpts,
+  ItemCriteria,
+  Loose,
+  QueueArgsOf,
+  QueueName,
+  SoundId,
+  ToggleFeature,
+} from "../schema/index";
 
 /**
  * Anything that can be printed.
@@ -33,12 +45,12 @@ export interface PrintOptions {
   /** Row. Only used together with {@link PrintOptions.x}. */
   y?: number;
   /**
-   * StoneScript colour code, e.g. `"r"` for red.
+   * Colour of the text: `#rrggbb`, or a preset such as `#red`.
    *
    * @remarks
    * Only applied when both `x` and `y` are given.
    */
-  color?: string;
+  color?: Color;
   /**
    * Draw on the player's face instead of on the screen.
    *
@@ -128,16 +140,37 @@ export class CommandQueue {
   }
 
   /**
-   * Queues a raw request.
+   * Queues a request by name, checked against the StoneScript API.
    *
    * @remarks
-   * An escape hatch for commands this class does not wrap; prefer the typed
-   * methods below.
+   * Accepts both the ten queued commands and any callable member, since the
+   * queue is just a deferred batch. The typed methods below are usually more
+   * convenient, because they build the joined payload for you.
+   *
+   * @typeParam N - The member or command name.
+   * @param name - StoneScript command or function name.
+   * @param args - Arguments for that name.
+   *
+   * @example
+   * ```ts
+   * ssrpg.command.push("loc.Pause");
+   * ssrpg.command.push("player.ShowScaredFace", 30);
+   * ```
+   */
+  push<N extends QueueName>(name: N, ...args: QueueArgsOf<N>): void {
+    this.pushRaw(name, ...(args as Scalar[]));
+  }
+
+  /**
+   * Queues a request without checking the name.
+   *
+   * @remarks
+   * The escape hatch for a command this library does not know yet.
    *
    * @param name - StoneScript command or function name.
    * @param args - Arguments, already in the shape the game expects.
    */
-  push(name: string, ...args: Scalar[]): void {
+  pushRaw(name: string, ...args: Scalar[]): void {
     this.#queue.push([name, ...args]);
   }
 
@@ -168,44 +201,68 @@ export class CommandQueue {
     }
 
     parts.push(...toParts(text));
-    this.push(">", parts.join(""));
+    this.#command(">", parts.join(""));
   }
 
   /**
-   * Queues `play` — plays a sound.
+   * Queues `play` — plays a sound effect.
    *
-   * @param args - Sound name and any modifiers, joined with spaces.
+   * @param sound - Sound id. The documented ids autocomplete; others are
+   * still accepted.
+   * @param pitch - Playback pitch. `100` is unchanged, higher is faster.
+   *
+   * @see Appendix B of the Stonescript manual for the full list.
+   *
+   * @example
+   * ```ts
+   * ssrpg.play("bat_wing");
+   * ssrpg.play("ant_attack", 120);
+   * ```
    */
-  play(...args: PrintArg[]): void {
-    this.push("play", joinArgs(args, " "));
+  play(sound: Loose<SoundId>, pitch?: number): void {
+    this.#command("play", pitch === undefined ? sound : `${sound} ${pitch}`);
   }
 
   /**
-   * Queues `equipR` — equips items to the right hand.
+   * Queues `equipR` — equips an item to the right hand.
    *
-   * @param items - Item names, joined with spaces. Several names let the game
-   * fall back to the next one when an item is unavailable.
+   * @param criteria - Search criteria, joined with spaces: name fragments,
+   * {@link SearchFilter} tags, `*n` star levels, `+n` enchantment bonuses, or
+   * any of those negated with `-`. Up to 7.
    */
-  equipR(...items: string[]): void {
-    this.push("equipR", items.join(" "));
+  equipR(...criteria: ItemCriteria[]): void {
+    this.#command("equipR", criteria.join(" "));
   }
 
   /**
-   * Queues `equipL` — equips items to the left hand.
+   * Queues `equipL` — equips an item to the left hand.
    *
-   * @param items - Item names, joined with spaces.
+   * @param criteria - Search criteria, joined with spaces: name fragments,
+   * {@link SearchFilter} tags, `*n` star levels, `+n` enchantment bonuses, or
+   * any of those negated with `-`. Up to 7.
    */
-  equipL(...items: string[]): void {
-    this.push("equipL", items.join(" "));
+  equipL(...criteria: ItemCriteria[]): void {
+    this.#command("equipL", criteria.join(" "));
   }
 
   /**
-   * Queues `equip` — equips items to whichever hand fits best.
+   * Queues `equip` — equips an item to whichever hand fits best.
    *
-   * @param items - Item names, joined with spaces.
+   * @remarks
+   * Two-handed items must be equipped with this form rather than with
+   * {@link CommandQueue.equipL} or {@link CommandQueue.equipR}.
+   *
+   * @param criteria - Search criteria, joined with spaces: name fragments,
+   * {@link SearchFilter} tags, `*n` star levels, `+n` enchantment bonuses, or
+   * any of those negated with `-`. Up to 7.
+   *
+   * @example
+   * ```ts
+   * ssrpg.equip("hammer", "*7", "-socket");
+   * ```
    */
-  equip(...items: string[]): void {
-    this.push("equip", items.join(" "));
+  equip(...criteria: ItemCriteria[]): void {
+    this.#command("equip", criteria.join(" "));
   }
 
   /**
@@ -214,36 +271,60 @@ export class CommandQueue {
    * @param index - The loadout slot to switch to.
    */
   loadout(index: number): void {
-    this.push("loadout", String(index));
+    this.#command("loadout", String(index));
   }
 
   /**
-   * Queues `activate` — activates the item in the given hand.
+   * Queues `activate` — activates an item ability.
    *
-   * @param args - `"R"` or `"L"`, plus any modifiers, joined with spaces.
+   * @param target - A hand (`"R"`/`"right"`, `"L"`/`"left"`), the potion
+   * (`"P"`/`"potion"`), or an {@link AbilityId}.
    *
    * @see {@link Item.CanActivate} to check first.
+   *
+   * @example
+   * ```ts
+   * if (await ssrpg.item.CanActivate("skeleton_arm")) ssrpg.activate("R");
+   * ```
    */
-  activate(...args: PrintArg[]): void {
-    this.push("activate", joinArgs(args, " "));
+  activate(target: ActivateTarget): void {
+    this.#command("activate", target);
   }
 
   /**
-   * Queues `enable` — enables items or abilities.
+   * Queues `enable` — restores a game feature.
    *
-   * @param names - Item or ability names, joined with spaces.
+   * @param feature - The feature to restore, or `hud` followed by the flags
+   * of the elements to bring back.
+   *
+   * @see {@link CommandQueue.disable}
    */
-  enable(...names: string[]): void {
-    this.push("enable", names.join(" "));
+  enable(feature: ToggleFeature): void;
+  enable<F extends string>(hud: `hud ${HudOpts<F>}`): void;
+  enable(feature: string): void {
+    this.#command("enable", feature);
   }
 
   /**
-   * Queues `disable` — disables items or abilities.
+   * Queues `disable` — turns a game feature off.
    *
-   * @param names - Item or ability names, joined with spaces.
+   * @remarks
+   * `hud` on its own hides every element; adding flags hides only those —
+   * `p` player health, `f` foe health, `a` ability buttons, `r` resources,
+   * `b` banner, `u` utility belt. Invalid flag letters are a compile error.
+   *
+   * @param feature - The feature to disable, or `hud` followed by flags.
+   *
+   * @example
+   * ```ts
+   * ssrpg.disable("abilities");
+   * ssrpg.disable("hud ru");   // resources and utility belt only
+   * ```
    */
-  disable(...names: string[]): void {
-    this.push("disable", names.join(" "));
+  disable(feature: ToggleFeature): void;
+  disable<F extends string>(hud: `hud ${HudOpts<F>}`): void;
+  disable(feature: string): void {
+    this.#command("disable", feature);
   }
 
   /**
@@ -257,7 +338,17 @@ export class CommandQueue {
    * ```
    */
   brew(...materials: string[]): void {
-    this.push("brew", materials.join("+"));
+    this.#command("brew", materials.join("+"));
+  }
+
+  /**
+   * Queues one of the ten commands with its single joined payload.
+   *
+   * @param name - The command name.
+   * @param payload - The payload the game parses.
+   */
+  #command(name: CommandName, payload: string): void {
+    this.pushRaw(name, payload);
   }
 }
 
@@ -270,15 +361,4 @@ export class CommandQueue {
 function toParts(value: PrintArg | readonly PrintArg[]): string[] {
   const items = Array.isArray(value) ? value : [value as PrintArg];
   return items.map((item) => (item === null || item === undefined ? "" : String(item)));
-}
-
-/**
- * Stringifies and joins command arguments.
- *
- * @param args - The arguments to join.
- * @param separator - String to place between them.
- * @returns The joined payload.
- */
-function joinArgs(args: readonly PrintArg[], separator: string): string {
-  return toParts(args).join(separator);
 }

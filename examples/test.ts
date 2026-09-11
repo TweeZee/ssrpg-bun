@@ -30,18 +30,22 @@ async function testStep(context: StepContext): Promise<void> {
   yPos = (yPos + 1) % 30;
   ssrpg.print(`hello bun! ${new Date().toLocaleTimeString()}`, { x: 1, y: yPos });
 
-  // One round trip for both values instead of two.
-  const [currentFoe, foeDistance] = await ssrpg.multiCall([["foe"], ["foe.distance"]]);
+  // One round trip for everything, with each value narrowed to its own type.
+  const state = await ssrpg.readAll({
+    foe: "foe",
+    distance: "foe.distance",
+    time: "time",
+    totaltime: "totaltime",
+  });
+  const { foe: currentFoe, distance: foeDistance } = state;
   console.log(`(pre) foe: ${currentFoe}, distance: ${foeDistance}`);
-
-  console.log(`(pre) time: ${await ssrpg.time()}`);
-  console.log(`(pre) totaltime: ${await ssrpg.totaltime()}`);
+  console.log(`(pre) time: ${state.time}, totaltime: ${state.totaltime}`);
   console.log(await ssrpg.getScreen(0, 0, 10, 10));
 
   console.log(`var: ${await ssrpg.var.get("mode")}`);
   await ssrpg.var.set("mode", "heal");
 
-  if (typeof currentFoe === "string" && currentFoe.includes("boss")) {
+  if (currentFoe?.includes("boss")) {
     ssrpg.equipR("sword");
     ssrpg.equipL("hammer");
     ssrpg.loc.Pause();
@@ -51,7 +55,7 @@ async function testStep(context: StepContext): Promise<void> {
   ssrpg.equip("arm");
 
   const canActivate = await ssrpg.item.CanActivate("skeleton_arm");
-  if (typeof foeDistance === "number" && foeDistance < 8 && canActivate) {
+  if (foeDistance !== null && foeDistance < 8 && canActivate) {
     ssrpg.activate("R");
   }
 

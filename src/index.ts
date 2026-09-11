@@ -12,6 +12,11 @@
  * the conveniences, and the {@link buildPacket | protocol helpers} are
  * exported for tooling and tests.
  *
+ * {@link StoneScriptAPI} is the type-level model of the game's own API. It is
+ * what lets {@link SSRPGInterface.call} reject a name the game does not have
+ * and narrow the result to that member's type, and it can be extended by
+ * declaration merging when the game moves ahead of this library.
+ *
  * @example
  * ```ts
  * import { SSRPGInterface } from "ssrpg-bun";
@@ -50,3 +55,4 @@ export {
   US,
 } from "./protocol";
 export * from "./commands/index";
+export * from "./schema/index";

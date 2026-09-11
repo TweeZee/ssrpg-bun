@@ -4,6 +4,7 @@
  * @packageDocumentation
  */
 import { callable, namespace, type CallHost } from "./base";
+import type { KeyAction, KeyName, Loose } from "../schema/index";
 
 /**
  * `key` — key bindings.
@@ -31,7 +32,7 @@ export interface Key {
    * @param key2 - Optional secondary key.
    * @returns A promise that settles once the game has acknowledged the call.
    */
-  Bind(action: string, key1: string, key2?: string): Promise<void>;
+  Bind(action: KeyAction, key1: Loose<KeyName>, key2?: Loose<KeyName>): Promise<void>;
 
   /**
    * Calls `key.GetActKey`.
@@ -39,15 +40,27 @@ export interface Key {
    * @param action - Action id to look up.
    * @returns The key bound to the action.
    */
-  GetActKey(action: string): Promise<string | null>;
+  GetActKey(action: KeyAction): Promise<string | null>;
 
   /**
    * Calls `key.GetActKey1`.
    *
    * @param action - Action id to look up.
    * @returns The action's primary key.
+   *
+   * @deprecated The manual documents no such member; it was carried over from
+   * the Python library. Use {@link Key.GetActKey}, which is the documented
+   * name for the primary key.
    */
-  GetActKey1(action: string): Promise<string | null>;
+  GetActKey1(action: KeyAction): Promise<string | null>;
+
+  /**
+   * Calls `key.GetKeyAct` — the reverse lookup of {@link Key.GetActKey}.
+   *
+   * @param key - Key to look up.
+   * @returns The action bound to that key, or `"None"` when it is unbound.
+   */
+  GetKeyAct(key: Loose<KeyName>): Promise<string | null>;
 
   /**
    * Calls `key.GetActKey2`.
@@ -55,7 +68,7 @@ export interface Key {
    * @param action - Action id to look up.
    * @returns The action's secondary key.
    */
-  GetActKey2(action: string): Promise<string | null>;
+  GetActKey2(action: KeyAction): Promise<string | null>;
 
   /**
    * Calls `key.GetActLabel`.
@@ -63,7 +76,7 @@ export interface Key {
    * @param action - Action id to look up.
    * @returns The action's human-readable label.
    */
-  GetActLabel(action: string): Promise<string | null>;
+  GetActLabel(action: KeyAction): Promise<string | null>;
 
   /**
    * Calls `key.ResetBinds` — restores the default key bindings.
@@ -84,12 +97,13 @@ export interface Key {
 export function createKey(host: CallHost): Key {
   const ns = namespace(host, "key");
   return callable(() => ns.str(""), {
-    Bind: (action: string, key1: string, key2?: string) =>
+    Bind: (action: KeyAction, key1: Loose<KeyName>, key2?: Loose<KeyName>) =>
       key2 === undefined ? ns.invoke("Bind", action, key1) : ns.invoke("Bind", action, key1, key2),
-    GetActKey: (action: string) => ns.str("GetActKey", action),
-    GetActKey1: (action: string) => ns.str("GetActKey1", action),
-    GetActKey2: (action: string) => ns.str("GetActKey2", action),
-    GetActLabel: (action: string) => ns.str("GetActLabel", action),
+    GetActKey: (action: KeyAction) => ns.str("GetActKey", action),
+    GetActKey1: (action: KeyAction) => ns.str("GetActKey1", action),
+    GetActKey2: (action: KeyAction) => ns.str("GetActKey2", action),
+    GetActLabel: (action: KeyAction) => ns.str("GetActLabel", action),
+    GetKeyAct: (key: Loose<KeyName>) => ns.str("GetKeyAct", key),
     ResetBinds: () => ns.invoke("ResetBinds"),
   }) satisfies Key;
 }

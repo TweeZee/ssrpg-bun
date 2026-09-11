@@ -4,6 +4,7 @@
  * @packageDocumentation
  */
 import { callable, namespace, type CallHost } from "./base";
+import type { AbilityId, ItemCriteria, Loose } from "../schema/index";
 
 /**
  * One equipped item, as exposed by `item.left` and `item.right`.
@@ -63,23 +64,26 @@ export interface Item {
    *
    * @see {@link CommandQueue.activate}
    */
-  CanActivate(itemName?: string): Promise<boolean>;
+  CanActivate(itemName?: Loose<AbilityId>): Promise<boolean>;
 
   /**
    * Calls `item.GetCooldown`.
    *
-   * @param itemName - Item to inspect.
-   * @returns Frames left on the item's cooldown; `0` when it is ready.
+   * @param ability - Ability id; the documented ids autocomplete.
+   * @returns Frames left on the ability's cooldown, `0` when it is ready, or
+   * `-1` for an unknown ability or one whose weapon has never been used.
+   *
+   * @see Appendix A of the Stonescript manual.
    */
-  GetCooldown(itemName: string): Promise<number | null>;
+  GetCooldown(ability: Loose<AbilityId>): Promise<number | null>;
 
   /**
    * Calls `item.GetCount`.
    *
-   * @param itemName - Item to count.
-   * @returns How many of that item the player carries.
+   * @param criteria - Search criteria, e.g. `"sword *0 -socket"`.
+   * @returns How many matching items the player carries; `0` for none.
    */
-  GetCount(itemName: string): Promise<number | null>;
+  GetCount(criteria: string): Promise<number | null>;
 
   /**
    * Calls `item.GetTreasureCount`.
@@ -156,8 +160,8 @@ export function createItem(host: CallHost): Item {
   return {
     CanActivate: (itemName) =>
       itemName === undefined ? ns.bool("CanActivate") : ns.bool("CanActivate", itemName),
-    GetCooldown: (itemName) => ns.int("GetCooldown", itemName),
-    GetCount: (itemName) => ns.int("GetCount", itemName),
+    GetCooldown: (ability) => ns.int("GetCooldown", ability),
+    GetCount: (criteria) => ns.int("GetCount", criteria),
     GetTreasureCount: () => ns.int("GetTreasureCount"),
     GetTreasureLimit: () => ns.int("GetTreasureLimit"),
     potion: () => ns.str("potion"),
