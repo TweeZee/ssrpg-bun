@@ -7,11 +7,6 @@
   "name": "ssrpg-bun",
   "readme": "README.md",
   "includeVersion": true,
-  "categorizeByGroup": true,
-  "navigationLinks": {
-    "Stone Story RPG": "https://stonestoryrpg.com/",
-    "SSRPGInterface (Python)": "https://github.com/artificial-potato/SSRPGInterface"
-  },
   "sort": [
     "source-order"
   ],
@@ -39,6 +34,9 @@
     "SetSignature",
     "TypeAlias"
   ],
-  "customCss": "./node_modules/@stephansama/catppuccin-typedoc/dist/catppuccin-typedoc.css",
-  "gitRevision": "main"
+  "gitRevision": "main",
+  "plugin": [
+    "typedoc-plugin-markdown",
+    "typedoc-github-wiki-theme"
+  ]
 }
